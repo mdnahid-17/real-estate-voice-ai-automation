@@ -41,7 +41,7 @@ JavaScript Lead Extraction
  Customer Email
  
 🧩 Tech Stack
-Technology	Purpose <br/>
+Technology 	Purpose 
 n8n	Workflow automation
 Vapi	Voice AI / call handling
 Google Gemini	AI processing
@@ -49,6 +49,7 @@ JavaScript	Lead data extraction
 Google Sheets	Lead storage
 Gmail	Email notifications
 Google Calendar	Site-visit scheduling
+
 📌 Lead Information
 The workflow can process:
 

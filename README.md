@@ -24,7 +24,6 @@ The workflow converts voice conversations into structured property leads, stores
 🔄 End-to-end automated lead workflow
 
 🔄 Workflow 
-
 Vapi / Voice Assistant
         ↓
       Webhook
@@ -40,8 +39,9 @@ JavaScript Lead Extraction
    Admin Email
         ↓
  Customer Email
+ 
 🧩 Tech Stack
-Technology	Purpose
+Technology	Purpose <br/>
 n8n	Workflow automation
 Vapi	Voice AI / call handling
 Google Gemini	AI processing

@@ -1,0 +1,349 @@
+{
+  "name": "Real Estate Voice Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "106301cf-9c03-4bdb-be57-fd1d0612b049",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        0
+      ],
+      "id": "f0c393f4-13ca-47f6-a6fc-04a02a54f078",
+      "name": "Webhook",
+      "webhookId": "106301cf-9c03-4bdb-be57-fd1d0612b049"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Fixed Exact Email Extraction\n\nconst item = $input.item.json;\nconst body = item.body || item;\nconst message = body.message || {};\nconst artifact = message.artifact || {};\n\n// Format Transcript into text block\nconst rawTranscript = artifact.messages || message.transcript || body.transcript || [];\nfunction formatTranscript(messages) {\n  if (!messages) return '';\n  if (typeof messages === 'string') return messages;\n  if (!Array.isArray(messages)) return '';\n  return messages\n    .filter(m => m && (m.role === 'assistant' || m.role === 'user' || m.role === 'bot'))\n    .map(m => `${(m.role === 'assistant' || m.role === 'bot') ? 'AI' : 'User'}: ${m.message || m.content || ''}`)\n    .join('\\n');\n}\n\nconst transcriptText = formatTranscript(rawTranscript);\n\n// ---------------- EXTRACTION LOGIC ----------------\n\n// 1. Name Extraction\nlet name = 'N/A';\nconst nameMatch = transcriptText.match(/(?:my name is|i am|this is)\\s+([a-zA-Z]+)/i) || \n                  transcriptText.match(/AI:\\s*Hello\\s+([a-zA-Z]+)/i);\nif (nameMatch) name = nameMatch[1];\n\n// 2. Location Extraction\nlet location = 'N/A';\nif (/uttora|kustora|uttara/i.test(transcriptText)) {\n  location = 'Uttara';\n} else if (/gulshan/i.test(transcriptText)) {\n  location = 'Gulshan';\n} else if (/banani/i.test(transcriptText)) {\n  location = 'Banani';\n} else if (/dhanmondi/i.test(transcriptText)) {\n  location = 'Dhanmondi';\n} else if (/bashundhara/i.test(transcriptText)) {\n  location = 'Bashundhara';\n}\n\n// 3. Property Type & Requirements\nlet property = 'N/A';\nif (/apartment|flat/i.test(transcriptText)) {\n  property = 'Apartment';\n} else if (/plot|land/i.test(transcriptText)) {\n  property = 'Plot';\n} else if (/commercial|office/i.test(transcriptText)) {\n  property = 'Commercial Space';\n}\n\nconst bedMatch = transcriptText.match(/(\\d+)\\s*(?:bed|bedroom)/i);\nconst washMatch = transcriptText.match(/(\\d+)\\s*(?:washroom|bath|bathroom)/i);\nlet propertyDetails = property;\nif (bedMatch || washMatch) {\n  const beds = bedMatch ? `${bedMatch[1]} Bed` : '';\n  const baths = washMatch ? `${washMatch[1]} Bath` : '';\n  propertyDetails = `${beds} ${baths} ${property}`.trim();\n}\n\n// 4. Budget Extraction\nlet budget = 'N/A';\nconst budgetMatch = transcriptText.match(/(?:budget\\s*(?:around|is)?\\s*)?(\\d+(?:\\.\\d+)?\\s*(?:crore|lakh|million|BDT))/i);\nif (budgetMatch) {\n  budget = budgetMatch[1];\n}\n\n// 5. Phone Number Extraction\nlet phone = 'N/A';\nconst digitsOnly = transcriptText.replace(/[^0-9]/g, '');\nif (digitsOnly.length >= 11) {\n  const phoneMatch = digitsOnly.match(/01\\d{9}/);\n  if (phoneMatch) {\n    phone = phoneMatch[0];\n  } else {\n    phone = digitsOnly.slice(-11);\n  }\n}\n\n// 6. EXACT EMAIL EXTRACTION\n// 6. STRICT & CLEAN EMAIL EXTRACTION (Strips glued phone numbers and filler words)\nlet email = 'N/A';\n\nlet cleanText = transcriptText.toLowerCase()\n  .replace(/at\\s*the\\s*rate/g, '@')\n  .replace(/at\\s*gmail/g, '@gmail')\n  .replace(/dot\\s*com/g, '.com')\n  .replace(/\\s+/g, '');\n\n// Extract standard email format\nconst rawEmailMatch = cleanText.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,})/i);\n\nif (rawEmailMatch) {\n  let matchedStr = rawEmailMatch[1];\n\n  // 1. Remove trailing domain glitches like .com.ai -> .com\n  matchedStr = matchedStr.replace(/\\.com\\.[a-z]+$/i, '.com');\n\n  // 2. Remove leading digits (Phone number glued to email)\n  matchedStr = matchedStr.replace(/^[0-9]+/, '');\n\n  // 3. Remove leading dots or symbols\n  matchedStr = matchedStr.replace(/^[.\\s\\-_]*/, '');\n\n  // 4. Remove spoken filler prefixes (andmyemailis, myemailis, emailis, is, etc.)\n  matchedStr = matchedStr.replace(/^(andmyemailis|myemailis|emailis|myemail|email|is)+/i, '');\n\n  // 5. Final pass to strip any remaining leading symbols or digits\n  matchedStr = matchedStr.replace(/^[.\\s\\-_0-9]*/, '');\n\n  // Validate final email format\n  const finalEmailMatch = matchedStr.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,})/i);\n  if (finalEmailMatch) {\n    email = finalEmailMatch[1];\n  }\n}\n\n// 7. Site Visit Extraction\nlet visitSites = 'N/A';\nconst visitMatch = transcriptText.match(/(tomorrow(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?|next\\s+[a-z]+\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?|\\d{1,2}(?:st|nd|rd|th)?\\s+[a-z]+\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)/i);\nif (visitMatch) {\n  visitSites = visitMatch[0];\n}\n\n// Date Formatter\nfunction formatDate(dateStr) {\n  const d = dateStr ? new Date(dateStr) : new Date();\n  return d.toLocaleString('en-US', {\n    month: 'numeric',\n    day: 'numeric',\n    year: 'numeric',\n    hour: 'numeric',\n    minute: '2-digit',\n    second: '2-digit',\n    hour12: true\n  });\n}\n\nconst intent = `Looking for ${propertyDetails !== 'N/A' ? propertyDetails : property} in ${location} with budget ${budget}`;\n\nreturn [{\n  json: {\n    date_time: formatDate(message.createdAt || artifact.createdAt || body.createdAt),\n    name: name,\n    phone: phone,\n    email: email,\n    property: propertyDetails,\n    budget: budget,\n    location: location,\n    visit_sites: visitSites,\n    intent: intent,\n    transcript: transcriptText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        0
+      ],
+      "id": "19664e7c-292b-42b1-a028-d191261a0850",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        224
+      ],
+      "id": "6a8ac8bb-a281-43c5-8562-02c3cd18324a",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1AhtS9Php209ognRRa6o4rOO-JPRxrs_FgxwIPnnkQi0",
+          "mode": "list",
+          "cachedResultName": "Real Estate Voice Assistant ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AhtS9Php209ognRRa6o4rOO-JPRxrs_FgxwIPnnkQi0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AhtS9Php209ognRRa6o4rOO-JPRxrs_FgxwIPnnkQi0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Code in JavaScript').item.json.name }}",
+            "Property": "={{ $('Code in JavaScript').item.json.property }}",
+            "Phone": "={{ $('Code in JavaScript').item.json.phone }}",
+            "Budget": "={{ $('Code in JavaScript').item.json.budget }}",
+            "Location": "={{ $('Code in JavaScript').item.json.location }}",
+            "AI Summary": "={{ $json.output }}",
+            "Visit Site": "={{ $('Code in JavaScript').item.json.visit_sites }}",
+            "Date & Time": "={{ $('Code in JavaScript').item.json.date_time }}",
+            "E-mail": "={{ $('Code in JavaScript').item.json.email }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Property",
+              "displayName": "Property",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Visit Site",
+              "displayName": "Visit Site",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "AI Summary",
+              "displayName": "AI Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date & Time",
+              "displayName": "Date & Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "E-mail",
+              "displayName": "E-mail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        0
+      ],
+      "id": "7031c42b-3fb1-43b6-932e-9399d4a22eec",
+      "name": "Append row in sheet"
+    },
+    {
+      "parameters": {
+        "sendTo": "=mdnahid998811@gmail.com",
+        "subject": "=New Real Estate Lead: {{ $json.Name }}  - {{ $json.Property }}",
+        "message": "=<!DOCTYPE html> <html> <head>   <meta charset=\"utf-8\">   <style>     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }     .container { max-width: 600px; background: #ffffff; margin: 0 auto; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }     .header { background: #1a365d; color: #ffffff; padding: 25px; text-align: center; }     .header h2 { margin: 0; font-size: 22px; font-weight: 600; }     .content { padding: 30px; }     .lead-info { width: 100%; border-collapse: collapse; margin-bottom: 25px; }     .lead-info td { padding: 12px 10px; border-bottom: 1px solid #edf2f7; font-size: 15px; }     .label { font-weight: 600; color: #4a5568; width: 35%; }     .value { color: #1a202c; }     .badge { background: #e2e8f0; color: #2d3748; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 13px; }     .intent-box { background: #f7fafc; border-left: 4px solid #3182ce; padding: 15px; border-radius: 0 6px 6px 0; margin-bottom: 25px; }     .intent-box h4 { margin: 0 0 8px 0; color: #2b6cb0; font-size: 15px; }     .intent-box p { margin: 0; font-size: 14px; line-height: 1.5; color: #4a5568; }     .transcript-box { background: #fffaf0; border: 1px solid #feebc8; padding: 15px; border-radius: 6px; font-size: 13px; color: #744210; max-height: 180px; overflow-y: auto; white-space: pre-wrap; }     .footer { background: #edf2f7; padding: 15px; text-align: center; font-size: 12px; color: #718096; }   </style> </head> <body>  <div class=\"container\">   <div class=\"header\">     <h2>🏡 New Lead Received!</h2>   </div>      <div class=\"content\">     <table class=\"lead-info\">       <tr>         <td class=\"label\">Date & Time:</td>         <td class=\"value\">{{ $json['Date & Time'] }}</td>       </tr>       <tr>         <td class=\"label\">Customer Name:</td>         <td class=\"value\"><strong>{{ $json.Name }}</strong></td>       </tr>       <tr>         <td class=\"label\">Phone Number:</td>         <td class=\"value\"><a href=\"tel:{{ $json.Phone }}\" style=\"color: #3182ce; text-decoration: none;\">{{ $json.Phone }}</a></td>       </tr>       <tr>         <td class=\"label\">Email:</td>         <td class=\"value\">{{ $json['E-mail'] }}</td>       </tr>       <tr>         <td class=\"label\">Property Type:</td>         <td class=\"value\"><span class=\"badge\">{{ $json.Property }}</span></td>       </tr>       <tr>         <td class=\"label\">Budget:</td>         <td class=\"value\">{{ $json.Budget }}</td>       </tr>       <tr>         <td class=\"label\">Preferred Location:</td>         <td class=\"value\">{{ $json.Location }}</td>       </tr>       <tr>         <td class=\"label\">Site Visit Date/Time:</td>         <td class=\"value\" style=\"color: #e53e3e; font-weight: 600;\">{{ $json['Visit Site'] }}</td>       </tr>     </table>      <div class=\"intent-box\">       <h4>🎯 Customer Intent / Summary:</h4>       <p>{{ $('Code in JavaScript').item.json.intent }}</p>     </div>      <div style=\"margin-bottom: 10px; font-weight: 600; font-size: 14px; color: #4a5568;\">📝 Conversation Transcript:</div>     <div class=\"transcript-box\">{{ $('Code in JavaScript').item.json.transcript }}</div>   </div>    <div class=\"footer\">     Real Estate AI Lead Management System System • Automated Alert   </div> </div>  </body> </html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "0689adf4-5e80-4bf2-9a72-f5e506055186",
+      "name": "Notify Admin",
+      "webhookId": "2f4cacd2-e0eb-4f1e-acff-23b28010b709"
+    },
+    {
+      "parameters": {
+        "sendTo": "=mn938128@gmail.com",
+        "subject": "Thank you for contacting ABC Real Estate – Property Inquiry Confirmation",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <style>\n    body {\n      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n      background-color: #f4f6f9;\n      margin: 0;\n      padding: 20px;\n    }\n    .container {\n      max-width: 600px;\n      background-color: #ffffff;\n      margin: 0 auto;\n      border-radius: 8px;\n      overflow: hidden;\n      box-shadow: 0 4px 10px rgba(0,0,0,0.05);\n    }\n    .header {\n      background-color: #1a365d;\n      color: #ffffff;\n      padding: 25px;\n      text-align: center;\n    }\n    .header h1 {\n      margin: 0;\n      font-size: 22px;\n      font-weight: 600;\n    }\n    .body-content {\n      padding: 30px;\n      color: #333333;\n      line-height: 1.6;\n    }\n    .details-box {\n      background-color: #f8fafc;\n      border-left: 4px solid #2b6cb0;\n      padding: 15px 20px;\n      margin: 20px 0;\n      border-radius: 4px;\n    }\n    .details-item {\n      margin-bottom: 10px;\n      font-size: 15px;\n    }\n    .details-item:last-child {\n      margin-bottom: 0;\n    }\n    .footer {\n      background-color: #edf2f7;\n      padding: 20px;\n      text-align: center;\n      font-size: 13px;\n      color: #718096;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>ABC Real Estate Ltd.</h1>\n    </div>\n    <div class=\"body-content\">\n      <p>Dear <strong>{{ $('Append row in sheet').item.json.Name }}</strong>,</p>\n      <p>Thank you for reaching out to <strong>ABC Real Estate</strong>! 🏢 We have received your query and are excited to help you find your dream property.</p>\n      \n      <p><strong>Here are the details of your request:</strong></p>\n      \n      <div class=\"details-box\">\n        <div class=\"details-item\">🏠 <strong>Property Type:</strong> {{ $('Code in JavaScript').item.json.property }}</div>\n        <div class=\"details-item\">📍 <strong>Location:</strong> {{ $('Code in JavaScript').item.json.location }}</div>\n        <div class=\"details-item\">💰 <strong>Budget:</strong> {{ $('Code in JavaScript').item.json.budget }}</div>\n        <div class=\"details-item\">📅 <strong>Site Visit Preferred:</strong> {{ $('Code in JavaScript').item.json.visit_sites }}</div>\n      </div>\n\n      <p>One of our real estate specialists will call you shortly on <strong>{{ $('Code in JavaScript').item.json.phone }}</strong> to assist you further and share the best options matching your requirement.</p>\n\n      <p>If you have any questions, feel free to reply directly to this email.</p>\n      \n      <p>Have a great day! 😊</p>\n      \n      <br>\n      <p style=\"margin-bottom: 2px;\">Best regards,</p>\n      <p style=\"margin-top: 0;\"><strong>Rhea | Real Estate Assistant</strong><br>ABC Real Estate Ltd.</p>\n    </div>\n    <div class=\"footer\">\n      <p>© 2026 ABC Real Estate Ltd. All rights reserved.</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1056,
+        0
+      ],
+      "id": "68e1cba7-8427-4015-8807-3e5d2a0403d7",
+      "name": "Notify User",
+      "webhookId": "24d3c103-1e1c-436f-8750-4c245560c25a"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an AI Assistant that manages Real Estate Leads and Site Visits.\n\nLead Details:\n- Name: {{ $json.name }}\n- Phone: {{ $json.phone }}\n- Email: {{ $json.email }}\n- Property: {{ $json.property }}\n- Budget: {{ $json.budget }}\n- Location: {{ $json.location }}\n- Visit Preferred: {{ $json.visit_sites }}\n- Raw Intent: {{ $json.intent }}\n\nFull Transcript:\n{{ $json.transcript }}\n\nYOUR INSTRUCTIONS:\n1. CHECK FOR SITE VISIT: Check if \"Visit Preferred\" or the transcript mentions a site visit (e.g., today, tomorrow, or a specific date/time).\n2. USE CALENDAR TOOL: If a site visit is requested and it's not \"No\", you MUST call the \"Create an event in Google Calendar\" tool to schedule the appointment. Pass the event title as \"Site Visit: {{ $json.name }}\", start time, and customer details.\n3. OUTPUT: Summarize the conversation intent in a concise 2-sentence summary stating what property the lead wants and their immediate next step (including whether the calendar visit was scheduled).",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        256,
+        0
+      ],
+      "id": "51f8c694-1869-4e34-946b-5e3e4377960c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "mdnahid998811@gmail.com",
+          "mode": "id"
+        },
+        "start": "={{ DateTime.fromISO($json.visit_sites).isValid ? DateTime.fromISO($json.visit_sites).toISO() : $now.toISO() }}",
+        "end": "={{ $now.plus({ hours: 1 }).toISO() }}",
+        "additionalFields": {
+          "description": "=Customer Name: {{ $json.name }} Phone: {{ $json.phone }} Email: {{ $json.email }} Budget: {{ $json.budget }} Location: {{ $json.location }} Intent: {{ $json.intent }}",
+          "summary": "=Site Visit: {{ $json.name }} - {{ $json.property }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        400,
+        224
+      ],
+      "id": "72d9d7aa-72b0-49a8-b531-0557a4888238",
+      "name": "Create an event in Google Calendar"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Notify Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Admin": {
+      "main": [
+        [
+          {
+            "node": "Notify User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "802ccfc1-0fc2-4c49-93d2-16377ec8bdbc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f00bba974abf03cb5183d4d65f8a9645a781b04770df6a7d08284fca87d50b3"
+  },
+  "nodeGroups": [],
+  "id": "GdVjVh2eR4qKF7jk",
+  "tags": []
+}
